@@ -1,58 +1,65 @@
 import streamlit as st
 import pandas as pd
 
-# CONFIGURACIÓN
-st.set_page_config(page_title="Control de Inasistencias", layout="wide")
+st.set_page_config(page_title="Analizador Flexible", layout="wide")
 
 def main():
-    st.title("📋 Control de Inasistencias por Alumno")
-    st.write("Análisis detallado de alumnos y grados.")
-
+    st.title("📋 Analizador de Inasistencias Personalizado")
+    
     url_input = st.text_input("Pega el enlace de tu Google Sheet:")
 
     if url_input:
         try:
+            # 1. LEER LOS DATOS
             base_url = url_input.split('/edit')[0]
             csv_url = f"{base_url}/export?format=csv"
-            
-            # Cargamos los datos
             df = pd.read_csv(csv_url)
-            st.success("¡Datos cargados!")
-
-            # --- NUEVA SECCIÓN: ANÁLISIS POR ALUMNO ---
-            st.header("🔍 Resumen de Inasistencias")
             
-            # Limpiamos nombres para que no haya errores por espacios
-            df['Nombre completo'] = df['Nombre'].astype(str) + " " + df['Apellido'].astype(str)
+            st.success("¡Archivo leído con éxito!")
             
-            # AGRUPAMOS: Contamos cuántas veces aparece cada alumno y guardamos su grado
-            # Usamos 'first' para el grado porque asumimos que el alumno no cambia de grado
-            resumen = df.groupby('Nombre completo').agg({
-                'Grado': 'first',
-                'Nombre completo': 'count'
-            }).rename(columns={'Nombre completo': 'Total Inasistencias'}).reset_index()
+            # 2. SELECCIÓN DE COLUMNAS (Para evitar el error de 'no existe')
+            st.sidebar.header("Configuración de Columnas")
+            st.sidebar.write("Dime qué columna es cada una:")
+            
+            todas_las_columnas = df.columns.tolist()
+            
+            # El programa intenta adivinar, pero tú confirmas:
+            col_nombre = st.sidebar.selectbox("Columna de NOMBRES:", todas_las_columnas)
+            col_apellido = st.sidebar.selectbox("Columna de APELLIDOS:", todas_las_columnas)
+            col_grado = st.sidebar.selectbox("Columna de GRADO/AÑO:", todas_las_columnas)
 
-            # Ordenamos de mayor a menor inasistencia
+            # 3. PROCESAMIENTO
+            # Creamos el nombre completo uniendo las dos columnas elegidas
+            df['Alumno'] = df[col_nombre].astype(str) + " " + df[col_apellido].astype(str)
+            
+            # Agrupamos usando las columnas que TÚ elegiste arriba
+            resumen = df.groupby('Alumno').agg({
+                col_grado: 'first',
+                'Alumno': 'count'
+            }).rename(columns={'Alumno': 'Total Inasistencias', col_grado: 'Grado'}).reset_index()
+
             resumen = resumen.sort_values(by='Total Inasistencias', ascending=False)
 
-            # Mostramos la tabla resumen
-            st.subheader("Listado de Inasistencias por Alumno")
+            # 4. MOSTRAR RESULTADOS
+            st.header("🔍 Resultados del Análisis")
+            
+            # Tarjetas con datos rápidos
+            c1, c2 = st.columns(2)
+            c1.metric("Total de Alumnos analizados", len(resumen))
+            c2.metric("Total de Inasistencias", resumen['Total Inasistencias'].sum())
+
+            # Tabla y Gráfico
+            st.subheader("Listado por Alumno y Grado")
             st.dataframe(resumen, use_container_width=True)
 
-            # GRÁFICO DE LOS MÁS AUSENTES
-            st.subheader("Gráfico: Alumnos con más notificaciones")
-            # Mostramos los primeros 15 para que no se vea amontonado
-            st.bar_chart(data=resumen.head(15), x='Nombre completo', y='Total Inasistencias')
-
-            # --- SECCIÓN DE DATOS ORIGINALES ---
-            with st.expander("Ver todos los datos originales"):
-                st.write(df)
+            st.subheader("Top 15 Alumnos con más inasistencias")
+            st.bar_chart(data=resumen.head(15), x='Alumno', y='Total Inasistencias')
 
         except Exception as e:
-            st.error("Error al procesar los datos.")
-            st.info(f"Detalle técnico: {e}")
+            st.error("Hubo un problema al procesar los datos.")
+            st.info(f"Asegúrate de seleccionar las columnas correctas en la barra lateral. Error: {e}")
     else:
-        st.info("Pega el link de tu hoja '2022' para empezar.")
+        st.info("Por favor, pega el link de Google Sheets.")
 
 if __name__ == "__main__":
     main()
